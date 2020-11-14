@@ -1,0 +1,49 @@
+version: '3.7'
+
+services:
+  redis:
+    image: redis:alpine
+    command: /bin/sh -c 'redis-server --requirepass $$(cat /run/secrets/redis_pwd)'
+    ports:
+      - 6379:6379
+    deploy:
+      replicas: 1
+    secrets:
+      - redis_pwd
+
+  app:
+    image: docker.pkg.github.com/maxkrivich/docker-swarm-aws-terraform-packer-ansible/flaskapp:v1
+    ports:
+      - 80:80
+    environment:
+      - FLASK_DEBUG=1
+    restart: on-failure
+    deploy:
+      replicas: 6
+      update_config:
+        parallelism: 2
+        delay: 30s
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+        max_attempts: 3
+        window: 120s
+    depends_on:
+      - redis
+    secrets:
+      - redis_pwd
+
+  visualizer:
+    image: dockersamples/visualizer
+    ports:
+      - 8080:8080
+    stop_grace_period: 1m30s
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    deploy:
+      placement:
+        constraints: [node.role == manager]
+
+secrets:
+  redis_pwd:
+    file: ./secrets/redis.txt
